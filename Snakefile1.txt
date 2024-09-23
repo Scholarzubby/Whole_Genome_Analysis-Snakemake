@@ -1,0 +1,70 @@
+rule ref_index:
+    input:
+        "mpoxcanada.fasta"
+    output:
+        "mpoxcanada.fasta.ann"
+    shell:
+        "bwa index {input}"
+rule trimming:
+    input:
+        "mpoxnigeria.fasta"
+    output:
+        "Trim_mpoxnigeria_paired.fasta",
+        "Trim_mpoxnigeria_unpaired.fasta"
+    shell:
+        "trimmomatic SE {input} {output} ILLUMINACLIP:TruSeq3-SE.fa:2:30:10 LEADING:3 TRAILING:3 MINLEN:36 SLIDINGWINDOW:4:20"
+
+rule bwa_map:
+    input:
+        ind="mpoxcanada.fasta.ann",
+        R1="Trim_mpoxnigeria_paired.fasta",
+        ref="mpoxcanada.fasta"
+    output:
+        "mapped_mpoxnigeria.bam"
+    shell:
+        "bwa mem {input.ref} {input.R1} {input.R2} | samtools view -Sb - > {output}"
+
+rule samtools_sort:
+    input:
+        "mapped_mpoxnigeria.bam"
+    output:
+        "sorted_mpoxnigeria.bam"
+    shell:
+        "samtools sort -O bam {input} > {output}"
+
+rule samtools_index:
+    input:
+        "sorted_mpoxnigeria.bam"
+    output:
+        "sorted_mpoxnigeria.bai"
+    shell:
+        "samtools index {input}"
+
+rule bcftools_call:
+    input:
+        fa="mpoxcanada.fasta",
+        bam="sorted_mpoxnigeria.bam",
+        bai="sorted_mpoxnigeria.bam.bai"
+    output:
+        "calls.vcf.gz"
+    shell:
+        "bcftools mpileup -Ou -f {input.fa} {input.bam} | "
+        "bcftools call -Oz -mv > {output}"
+
+rule vcf_index:
+    input:
+        "calls.vcf.gz"
+    output:
+        "calls.vcf.gz.csi"
+    shell:
+        "bcftools index {input}"
+
+rule consensus:
+    input:
+        fa="mpoxcanada.fasta",
+        cal="calls.vcf.gz",
+        ind="calls.vcf.gz.csi"
+    output:
+        "consensus.fa"
+    shell:
+        "cat {input.fa} | bcftools consensus {input.cal} > {output}"
